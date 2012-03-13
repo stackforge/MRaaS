@@ -194,8 +194,8 @@ class HadoopCluster:
         self.ssh_cmd_parallel(host_str)
 
     def start_hadoop(self):
-        pass
-
+        self.ssh_cmd(self.hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop namenode -format")
+        self.ssh_cmd(self.hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/start-all.sh")
 
     def configure_hadoop(self):
         logger.info(colored('Configuring Hadoop', 'yellow'))
