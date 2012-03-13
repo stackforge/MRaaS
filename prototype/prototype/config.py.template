@@ -1,0 +1,17 @@
+# e.g. tmiller3@hp.com
+name = '<HPCloud username>'
+password = '<HPCloud password>'
+
+# e.g. tmiller3@hp.com-default-tenant'
+project_id = '<HPCloud tenant>'
+
+# e.g. https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/
+auth_url = '<HPCloud auth url>'
+
+# system
+flavor_name = 'standard.small'
+image_name = 'Ubuntu Lucid 10.04 LTS Server 64-bit 20111212'
+
+# hadoop
+num_data_nodes = 3
+
