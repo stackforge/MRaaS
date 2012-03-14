@@ -1,23 +1,33 @@
-from subprocess import call
+import Queue
+import subprocess
+import threading
 import paramiko
 from common import logger
-from threading import Thread
+
+# paramiko.SSHClient.connect is not thread-safe.
+paramiko_lock = threading.Lock()
 
 
-
-# TODO: I was having problems with paramiko randomly hanging sometimes.
-def run_cmd_paramiko(host, keyfile, cmd):
+def run_cmd(host, keyfile, cmd, expect_status=0):
+    """
+        run cmd on host via ssh using keyfile.
+        if the result of the command is different
+        than expect_status, raise an exception.
+    """
     logger.info("Running \"{0}\" on {1}".format(cmd, host))
     ssh = paramiko.SSHClient()
-#    ssh.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy()) # ignore unknown hosts. TODO
-    ssh.set_missing_host_key_policy(paramiko.WarningPolicy())
+    ssh.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy()) # ignore unknown hosts
+    paramiko_lock.acquire()
     ssh.connect(host, username='root', key_filename=keyfile, password='')
-#    stdin, stdout, stderr = ssh.exec_command(cmd)
-#    print stdout.readlines()
+    paramiko_lock.release()
     chan = ssh.get_transport().open_session()
-    chan.exec_command('cmd')
+    chan.exec_command(cmd)
+    stdin = chan.makefile('wb')
+    stdout = chan.makefile('rb')
+    stderr = chan.makefile_stderr('rb')
     status = chan.recv_exit_status()
-#    if status != 0: raise "command failed on host {0}: {1}".format(host, cmd)
+    if status != expect_status:
+        raise Exception("command failed ({0}) on host {1}: {2}\n{3}".format(status, host, cmd, ''.join(stdout.readlines() + stderr.readlines())))
     ssh.close()
 
 
@@ -29,38 +39,37 @@ def scp(keyfile, src, dest, recursive=False):
     logger.info("Running \"{0}\"".format(cmd))
     o = open('/dev/null', 'w')
     i = open('/dev/null', 'r')
-    call(cmd, shell=True, stdout=o, stderr=o, stdin=i)
+    subprocess.call(cmd, shell=True, stdout=o, stderr=o, stdin=i)
     o.close()
     i.close()
 
 
-def run_cmd(host, keyfile, cmd):
-    logger.info("Running \"{0}\" on {1}".format(cmd, host))
-    ssh_opts = "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
-    cmd = cmd.replace('"', '\\"')
-    o = open('/dev/null', 'w')
-    i = open('/dev/null', 'r')
-    call("ssh -i {0} {1} root@{2} \"{3}\" 2>&1 > /dev/null".format(keyfile, ssh_opts, host, cmd), shell=True, stdout=o, stderr=o, stdin=i)
-    o.close()
-    i.close()
-
-# run the same command in parallel on several hosts
-def run_on_hosts(hosts, keyfile, command):
+def run_on_hosts(hosts, keyfile, command, expect_status=0):
+    """
+        run 'command' on all 'hosts' in parallel.
+    """
     threads = []
+    exceptions = Queue.Queue()
     for host in hosts:
-        t = Runner(host, keyfile, command)
+        t = Runner(host, keyfile, command, expect_status, exceptions)
         threads.append(t)
         t.start()
     for t in threads:
         t.join()
+    if not exceptions.empty():
+        raise exceptions.get()
 
 
-class Runner(Thread):
-    def __init__(self, host, keyfile, command):
-        Thread.__init__(self)
+class Runner(threading.Thread):
+    def __init__(self, host, keyfile, command, expect_status, exceptions):
+        threading.Thread.__init__(self)
         self.host = host
         self.keyfile = keyfile
         self.command = command
+        self.expect_status = expect_status
+        self.exceptions = exceptions
     def run(self):
-        run_cmd(self.host, self.keyfile, self.command)
-        self.status = 0 # TODO
+        try:
+            run_cmd(self.host, self.keyfile, self.command, self.expect_status)
+        except Exception as e:
+            self.exceptions.put(e)

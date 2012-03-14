@@ -30,7 +30,8 @@ class HadoopCluster:
             self.update_etc_hosts()
             self.configure_hadoop()
             self.start_hadoop()
-        except:
+        except Exception as e:
+            logger.error(colored('Encountered an error building the cluster.', 'red'))
             self.destroy()
             raise
 
@@ -137,8 +138,8 @@ class HadoopCluster:
         ip = self.host_ip(host)
         run_cmd(ip, self.private_key_filename, command)
 
-    def ssh_cmd_parallel(self, command):
-        run_on_hosts(self.host_ips(), self.private_key_filename, command)
+    def ssh_cmd_parallel(self, command, exit_status=0):
+        run_on_hosts(self.host_ips(), self.private_key_filename, command, exit_status)
 
     def host_ips(self):
         ips = []
@@ -166,7 +167,7 @@ class HadoopCluster:
         "echo \"sun-java6-jdk shared/accepted-sun-dlj-v1-1 select true\" | debconf-set-selections && " +
         "echo \"sun-java6-jre shared/accepted-sun-dlj-v1-1 select true\" | debconf-set-selections && " +
         "DEBIAN_FRONTEND=noninteractive aptitude install -y -f sun-java6-jre sun-java6-bin sun-java6-jdk && " +
-        "update-java-alternatives -s java-6-sun")
+        "update-java-alternatives -s java-6-sun", 2)
 
         # hadoop distribution
         self.ssh_cmd_parallel("cd /usr/local && " +
