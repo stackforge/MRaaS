@@ -10,7 +10,8 @@ auth_url = '<HPCloud auth url>'
 
 # system
 flavor_name = 'standard.small'
-image_name = 'Ubuntu Lucid 10.04 LTS Server 64-bit 20111212'
+base_image_name = 'Ubuntu Lucid 10.04 LTS Server 64-bit 20111212'
+hadoop_image_name = 'Lucid Hadoop'
 
 # hadoop
 num_data_nodes = 3

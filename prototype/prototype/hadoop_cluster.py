@@ -15,17 +15,17 @@ from termcolor import colored
 
 class HadoopCluster:
 
-    def __init__(self, nova_client, num_data_nodes, flavor_name, image_name):
+    def __init__(self, nova_client, num_data_nodes, flavor_name, base_image_name, hadoop_image_name):
         try:
             self.nova = nova_client
             self.hosts = {}
             self.work_dir = tempfile.mkdtemp()
             self.save_private_key(self.create_key_pair())
-            self.provision_hosts(num_data_nodes, self.flavor(flavor_name), self.image(image_name))
+            self.create_image(base_image_name, hadoop_image_name, flavor_name)
+            self.provision_hosts(num_data_nodes, self.flavor(flavor_name), self.image(hadoop_image_name))
             self.wait_for_hosts()
             self.assign_master_public_ip()
             self.log_ssh_commands()
-            self.install_hadoop()
             self.setup_ssh_keys()
             self.update_etc_hosts()
             self.configure_hadoop()
@@ -40,6 +40,19 @@ class HadoopCluster:
         if self.keypair: self.keypair.delete()
         for host in self.hosts.itervalues():
             self.destroy_host(host)
+
+    def create_image(self, base_image_name, hadoop_image_name, flavor_name):
+        if self.image(hadoop_image_name): return
+        logger.info("Building a hadoop image based on {0}.".format(base_image_name))
+        self.provision_host('image', self.flavor(flavor_name), self.image(base_image_name))
+        self.wait_for_hosts()
+        image_host = self.hosts['image']
+        self.install_hadoop(image_host)
+        self.log_ssh_commands()
+        self.hosts['image'].create_image(hadoop_image_name)
+        self.wait_for_image(hadoop_image_name)
+        self.destroy_host(self.hosts['image'])
+        del self.hosts['image']
 
     def destroy_host(self, host):
         logger.info("Destroying host {0} - {1}".format(host.name, host.id))
@@ -61,6 +74,17 @@ class HadoopCluster:
         self.provision_host("backup", flavor, image)
         for i in range(num_data_nodes):
             self.provision_host("hadoop" + str(i), flavor, image) 
+
+    def wait_for_image(self, image_name):
+        logger.info(colored('Saving image', 'yellow'))
+        i = select(self.nova.images.list(), lambda x: x.name == image_name)
+        if not i: raise Exception('image was not saved')
+        while re.match('SAVING', i.status):
+            print('.'),
+            time.sleep(1)
+            i = select(self.nova.images.list(), lambda x: x.name == image_name)
+        if not re.match('ACTIVE', i.status): raise Exception('failed to create image')
+
 
     # wait until all of the hosts are up
     def wait_for_hosts(self):
@@ -134,9 +158,9 @@ class HadoopCluster:
         for host in self.hosts.itervalues():
             logger.info("{0}: `ssh -i {1} root@{2}`".format(colored(host.name, 'green'), self.private_key_filename, self.host_ip(host)))
 
-    def ssh_cmd(self, host, command):
+    def ssh_cmd(self, host, command, exit_status=0):
         ip = self.host_ip(host)
-        run_cmd(ip, self.private_key_filename, command)
+        run_cmd(ip, self.private_key_filename, command, exit_status)
 
     def ssh_cmd_parallel(self, command, exit_status=0):
         run_on_hosts(self.host_ips(), self.private_key_filename, command, exit_status)
@@ -153,16 +177,15 @@ class HadoopCluster:
                 return self.host_ip(host)
         return None
 
-    def install_hadoop(self):
+    def install_hadoop(self, host):
         logger.info(colored('Installing Hadoop', 'yellow'))
 
-        # hadoop user / group
-        self.ssh_cmd_parallel("addgroup hadoop && " +
+        self.ssh_cmd(host, "addgroup hadoop && " +
         "adduser --system --shell /bin/bash --ingroup hadoop hadoop &&" +
         "echo 'hadoop ALL=(ALL) ALL' >> /etc/sudoers")
 
         # sun java 6
-        self.ssh_cmd_parallel("add-apt-repository ppa:ferramroberto/java && " +
+        self.ssh_cmd(host, "add-apt-repository ppa:ferramroberto/java && " +
         "apt-get update && " +
         "echo \"sun-java6-jdk shared/accepted-sun-dlj-v1-1 select true\" | debconf-set-selections && " +
         "echo \"sun-java6-jre shared/accepted-sun-dlj-v1-1 select true\" | debconf-set-selections && " +
@@ -170,11 +193,24 @@ class HadoopCluster:
         "update-java-alternatives -s java-6-sun", 2)
 
         # hadoop distribution
-        self.ssh_cmd_parallel("cd /usr/local && " +
+        self.ssh_cmd(host, "cd /usr/local && " +
         "wget http://apache.mesi.com.ar//hadoop/common/hadoop-0.20.203.0/hadoop-0.20.203.0rc1.tar.gz && " +
         "tar zxf hadoop-0.20.203.0rc1.tar.gz && " +
         "mv hadoop-0.20.203.0 hadoop && " +
         "chown -R hadoop:hadoop hadoop")
+
+        # hadoop dirs
+        self.ssh_cmd(host, "cd /usr/local/hadoop/conf && chown hadoop:hadoop ./*")
+        self.ssh_cmd(host, 'mkdir -p /usr/local/hadoop/logs && chown -R hadoop:hadoop /usr/local/hadoop/logs')
+        self.ssh_cmd(host, 'mkdir -p /usr/local/tmp/hadoop && chown -R hadoop:hadoop /usr/local/tmp/hadoop')
+
+        # environment
+        self.ssh_cmd(host, 'echo -e "export HADOOP_HOME=/usr/local/hadoop\nexport JAVA_HOME=/usr/lib/jvm/java-6-sun\nexport PATH=\$PATH:\$HADOOP_HOME/bin" >> /home/hadoop/.bashrc && chown hadoop:hadoop /home/hadoop/.bashrc')
+        self.ssh_cmd(host, 'echo -e "export JAVA_HOME=/usr/lib/jvm/java-6-sun\nexport HADOOP_OPTS=-Djava.net.preferIPv4Stack=true" >> /usr/local/hadoop/conf/hadoop-env.sh')
+        self.ssh_cmd(host, 'mkdir /home/hadoop/.ssh && chown hadoop:hadoop /home/hadoop/.ssh && '
+        'echo -e "UserKnownHostsFile /dev/null\nStrictHostKeyChecking no" >> /home/hadoop/.ssh/config && ' +
+        'chown hadoop:hadoop /home/hadoop/.ssh/config')
+
 
     def setup_ssh_keys(self):
         logger.info(colored('Setting up SSH keys', 'yellow'))
@@ -183,7 +219,7 @@ class HadoopCluster:
         scp(self.private_key_filename, "root@{0}:/home/hadoop/.ssh".format(self.host_ip_by_name("master")), "{0}/hadoop_keys".format(self.work_dir), recursive=True)
         for host in self.hosts.itervalues():
             scp(self.private_key_filename, "{0}/hadoop_keys/id_rsa.pub".format(self.work_dir), "root@{0}:/home/hadoop/master_key".format(self.host_ip(host)))
-            self.ssh_cmd(host, "mkdir /home/hadoop/.ssh && chown hadoop:hadoop /home/hadoop/.ssh && chmod 700 /home/hadoop/.ssh && " +
+            self.ssh_cmd(host, "if [ ! -d /home/hadoop/.ssh ]; then mkdir /home/hadoop/.ssh; fi && chown hadoop:hadoop /home/hadoop/.ssh && chmod 700 /home/hadoop/.ssh && " +
                 "mv /home/hadoop/master_key /home/hadoop/.ssh/authorized_keys && chmod 600 /home/hadoop/.ssh/authorized_keys && chown hadoop:hadoop /home/hadoop/.ssh/authorized_keys")
 
     def update_etc_hosts(self):
@@ -217,14 +253,8 @@ class HadoopCluster:
             scp(self.private_key_filename, core_site, "root@{0}:/usr/local/hadoop/conf/.".format(self.host_ip(host)))
             scp(self.private_key_filename, mapred_site, "root@{0}:/usr/local/hadoop/conf/.".format(self.host_ip(host)))
             scp(self.private_key_filename, hdfs_site, "root@{0}:/usr/local/hadoop/conf/.".format(self.host_ip(host)))
-            self.ssh_cmd(host, "cd /usr/local/hadoop/conf && chown hadoop:hadoop ./*")
-            self.ssh_cmd(host, 'echo -e "export HADOOP_HOME=/usr/local/hadoop\nexport JAVA_HOME=/usr/lib/jvm/java-6-sun\nexport PATH=\$PATH:\$HADOOP_HOME/bin" >> /home/hadoop/.bashrc && chown hadoop:hadoop /home/hadoop/.bashrc')
-            self.ssh_cmd(host, 'echo -e "export JAVA_HOME=/usr/lib/jvm/java-6-sun\nexport HADOOP_OPTS=-Djava.net.preferIPv4Stack=true" >> /usr/local/hadoop/conf/hadoop-env.sh')
-            self.ssh_cmd(host, 'echo -e "UserKnownHostsFile /dev/null\nStrictHostKeyChecking no" >> /home/hadoop/.ssh/config && chown hadoop:hadoop /home/hadoop/.ssh/config')
             self.ssh_cmd(host, 'echo -e "{0}" > /usr/local/hadoop/conf/masters'.format(masters))
             self.ssh_cmd(host, 'echo -e "{0}" > /usr/local/hadoop/conf/slaves'.format(slaves))
-            self.ssh_cmd(host, 'mkdir -p /usr/local/hadoop/logs && chown -R hadoop:hadoop /usr/local/hadoop/logs')
-            self.ssh_cmd(host, 'mkdir -p /usr/local/tmp/hadoop && chown -R hadoop:hadoop /usr/local/tmp/hadoop')
             
 
     def write_config_file(self, name, contents):
@@ -282,7 +312,7 @@ class HadoopCluster:
 
 if __name__ == '__main__':
     nova = nc.client.Client(config.name, config.password, config.project_id, config.auth_url, service_type='compute')
-    cluster = HadoopCluster(nova, config.num_data_nodes, config.flavor_name, config.image_name)
+    cluster = HadoopCluster(nova, config.num_data_nodes, config.flavor_name, config.base_image_name, config.hadoop_image_name)
 
     raw_input(colored("The cluster is up.  press ENTER to tear down.", 'green'))
 
