@@ -16,3 +16,7 @@ hadoop_image_name = 'Lucid Hadoop'
 # hadoop
 num_data_nodes = 3
 
+# map-reduce job to be executed
+map_reduce_jar = '<jar file path>'
+map_reduce_input = '<path to input data directory to be put in hdfs>'
+map_reduce_output = '<path where to put output from hdfs>'
