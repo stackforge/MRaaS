@@ -14,8 +14,16 @@ from common import select, logger
 from termcolor import colored
 
 class HadoopCluster:
+    """
+        This class provisions, configures and destroys Hadoop clusters.
 
+        example usage:
+            cluster = HadoopCluster.new(...)
+            ...
+            cluster.destroy()
+    """
     def __init__(self, nova_client, num_data_nodes, flavor_name, base_image_name, hadoop_image_name):
+        """ provision and configure a cluster, and start hadoop """
         try:
             self.nova = nova_client
             self.hosts = {}
@@ -71,7 +79,6 @@ class HadoopCluster:
 
     def provision_hosts(self, num_data_nodes, flavor, image):
         self.provision_host('master', flavor, image)
-        self.provision_host("backup", flavor, image)
         for i in range(num_data_nodes):
             self.provision_host("hadoop" + str(i), flavor, image) 
 
@@ -83,6 +90,7 @@ class HadoopCluster:
             print('.'),
             time.sleep(1)
             i = select(self.nova.images.list(), lambda x: x.name == image_name)
+        print ''
         if not re.match('ACTIVE', i.status): raise Exception('failed to create image')
 
 
@@ -180,6 +188,9 @@ class HadoopCluster:
     def install_hadoop(self, host):
         logger.info(colored('Installing Hadoop', 'yellow'))
 
+        # dramatically speed up ssh login
+        self.ssh_cmd(host, 'echo "UseDNS no" >> /etc/ssh/sshd_config && service ssh restart')
+
         self.ssh_cmd(host, "addgroup hadoop && " +
         "adduser --system --shell /bin/bash --ingroup hadoop hadoop &&" +
         "echo 'hadoop ALL=(ALL) ALL' >> /etc/sudoers")
@@ -219,14 +230,14 @@ class HadoopCluster:
         scp(self.private_key_filename, "root@{0}:/home/hadoop/.ssh".format(self.host_ip_by_name("master")), "{0}/hadoop_keys".format(self.work_dir), recursive=True)
         for host in self.hosts.itervalues():
             scp(self.private_key_filename, "{0}/hadoop_keys/id_rsa.pub".format(self.work_dir), "root@{0}:/home/hadoop/master_key".format(self.host_ip(host)))
-            self.ssh_cmd(host, "if [ ! -d /home/hadoop/.ssh ]; then mkdir /home/hadoop/.ssh; fi && chown hadoop:hadoop /home/hadoop/.ssh && chmod 700 /home/hadoop/.ssh && " +
+        self.ssh_cmd_parallel("if [ ! -d /home/hadoop/.ssh ]; then mkdir /home/hadoop/.ssh; fi && chown hadoop:hadoop /home/hadoop/.ssh && chmod 700 /home/hadoop/.ssh && " +
                 "mv /home/hadoop/master_key /home/hadoop/.ssh/authorized_keys && chmod 600 /home/hadoop/.ssh/authorized_keys && chown hadoop:hadoop /home/hadoop/.ssh/authorized_keys")
 
     def update_etc_hosts(self):
         logger.info(colored('Updating /etc/hosts', 'yellow'))
         host_str = 'echo -e "'
         for host in self.hosts.itervalues():
-            host_str = host_str + self.host_ip(host) + ' ' + host.name + ".novalocal\n"
+            host_str = host_str + self.host_ip(host) + ' ' + host.name + ".novalocal\\n"
         host_str = host_str + '" >> /etc/hosts'
         self.ssh_cmd_parallel(host_str)
 
@@ -243,7 +254,7 @@ class HadoopCluster:
         hdfs_site = '%s/hdfs-site.xml' % self.work_dir
         self.write_config_file(hdfs_site, self.hdfs_site_config())
 
-        masters = self.host_ip_by_name('backup')
+        masters = self.host_ip_by_name('master')
         slaves = ''
         for host in self.hosts.itervalues():
             if re.match('hadoop', host.name):
@@ -253,8 +264,8 @@ class HadoopCluster:
             scp(self.private_key_filename, core_site, "root@{0}:/usr/local/hadoop/conf/.".format(self.host_ip(host)))
             scp(self.private_key_filename, mapred_site, "root@{0}:/usr/local/hadoop/conf/.".format(self.host_ip(host)))
             scp(self.private_key_filename, hdfs_site, "root@{0}:/usr/local/hadoop/conf/.".format(self.host_ip(host)))
-            self.ssh_cmd(host, 'echo -e "{0}" > /usr/local/hadoop/conf/masters'.format(masters))
-            self.ssh_cmd(host, 'echo -e "{0}" > /usr/local/hadoop/conf/slaves'.format(slaves))
+        self.ssh_cmd_parallel('echo -e "{0}" > /usr/local/hadoop/conf/masters'.format(masters))
+        self.ssh_cmd_parallel('echo -e "{0}" > /usr/local/hadoop/conf/slaves'.format(slaves))
             
 
     def write_config_file(self, name, contents):
