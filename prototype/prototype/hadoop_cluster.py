@@ -1,4 +1,5 @@
 #!/usr/bin/python -u
+import json
 import os
 import re
 import shutil
@@ -17,17 +18,16 @@ class HadoopCluster:
     """
         This class provisions, configures and destroys Hadoop clusters.
 
-        example usage:
-            cluster = HadoopCluster.new(...)
-            ...
-            cluster.destroy()
     """
-    def __init__(self, nova_client, num_data_nodes, flavor_name, base_image_name, hadoop_image_name):
+    def __init__(self, nova_client, cluster_name, work_dir):
+        self.nova = nova_client
+        self.name = cluster_name
+        self.work_dir = work_dir
+
+    def provision(self, num_data_nodes, flavor_name, base_image_name, hadoop_image_name):
         """ provision and configure a cluster, and start hadoop """
         try:
-            self.nova = nova_client
             self.hosts = {}
-            self.work_dir = tempfile.mkdtemp()
             self.save_private_key(self.create_key_pair())
             self.create_image(base_image_name, hadoop_image_name, flavor_name)
             self.provision_hosts(num_data_nodes, self.flavor(flavor_name), self.image(hadoop_image_name))
@@ -38,10 +38,42 @@ class HadoopCluster:
             self.update_etc_hosts()
             self.configure_hadoop()
             self.start_hadoop()
+            logger.info(colored('The cluster is up!', 'green', attrs=['bold']))
         except Exception as e:
             logger.error(colored('Encountered an error building the cluster.', 'red'))
             self.destroy()
             raise
+
+
+
+
+    def to_file(self):
+        hosts = {}
+        for h in self.hosts.keys():
+            hosts[h] = self.hosts[h].name
+        data = {
+            'hosts': hosts,
+            'keypair': self.keypair.name,
+            'private_key_filename': self.private_key_filename,
+            'master_ip': self.master_ip
+        }
+        f = open(self.work_dir + '/state', 'w')
+        f.write(json.dumps(data))
+        f.close()
+
+    def from_file(self):
+        f = open(self.work_dir + '/state', 'r')
+        data = json.loads(f.read())
+        f.close
+        self.hosts = {}
+        current_hosts = self.nova.servers.list()
+        for hid in data['hosts'].keys():
+            self.hosts[hid] = select(current_hosts, lambda x: x.name == data['hosts'][hid])
+        kpmgr = nc.keypairs.KeypairManager(self.nova)
+        self.keypair = select(kpmgr.list(), lambda x: x.name == data['keypair'])
+        self.private_key_filename = data['private_key_filename']
+        self.master_ip = data['master_ip']
+        
 
     def destroy(self):
         shutil.rmtree(self.work_dir, ignore_errors=True)
@@ -74,7 +106,7 @@ class HadoopCluster:
 
     def provision_host(self, server_name, flavor, image):
         logger.info("Provisioning {0}".format(server_name))
-        s = self.nova.servers.create(server_name, image, flavor, key_name=self.keypair.name)
+        s = self.nova.servers.create(server_name + '.' + self.name, image, flavor, key_name=self.keypair.name)
         self.hosts[server_name] = s
 
     def provision_hosts(self, num_data_nodes, flavor, image):
@@ -104,7 +136,7 @@ class HadoopCluster:
                 time.sleep(1)
                 h = select(self.nova.servers.list(), lambda x: x.name == host.name)
             if re.match('ERROR', h.status): raise Exception("failed to create host {0}".format(host.name))
-            self.hosts[host.name] = h
+            self.hosts[host.name.split('.')[0]] = h
         # can't always log into hosts as soon as they become 'ACTIVE'. wait a bit longer.
         for i in range(30):
             print('.'),
@@ -150,7 +182,7 @@ class HadoopCluster:
         return kp
 
     def save_private_key(self, keypair):
-        filename = '{0}/{1}.pem'.format(self.work_dir, keypair.uuid)
+        filename = '{0}{1}.pem'.format(self.work_dir, keypair.uuid)
         f = open(filename, 'w')
         f.write(keypair.private_key)
         f.close()
@@ -162,9 +194,12 @@ class HadoopCluster:
     def host_ip(self, host):
         return host.addresses['private'][0]['addr']
 
+    def ssh_string(self, host):
+      return "ssh -i {0} root@{1}".format(self.private_key_filename, self.host_ip(host))
+
     def log_ssh_commands(self):
         for host in self.hosts.itervalues():
-            logger.info("{0}: `ssh -i {1} root@{2}`".format(colored(host.name, 'green'), self.private_key_filename, self.host_ip(host)))
+            logger.info("{0}: `{1}`".format(colored(host.name, 'green'), self.ssh_string(host)))
 
     def ssh_cmd(self, host, command, exit_status=0):
         ip = self.host_ip(host)
@@ -180,10 +215,9 @@ class HadoopCluster:
         return ips
 
     def host_ip_by_name(self, name):
-        for host in self.hosts.itervalues():
-            if host.name == name:
-                return self.host_ip(host)
-        return None
+        if not self.hosts[name]:
+            return None
+        return self.host_ip(self.hosts[name])
 
     def install_hadoop(self, host):
         logger.info(colored('Installing Hadoop', 'yellow'))
@@ -321,10 +355,8 @@ class HadoopCluster:
         """
 
 
-if __name__ == '__main__':
-    nova = nc.client.Client(config.name, config.password, config.project_id, config.auth_url, service_type='compute')
-    cluster = HadoopCluster(nova, config.num_data_nodes, config.flavor_name, config.base_image_name, config.hadoop_image_name)
-
-    raw_input(colored("The cluster is up.  press ENTER to tear down.", 'green'))
-
-    cluster.destroy()
+    def print_info(self):
+        print('Cluster: ' + colored(self.name, 'green', attrs=['bold']))
+        for h in self.hosts.keys():
+            print '        {0}: {1}'.format(colored(h, 'green'), self.ssh_string(self.hosts[h]))
+        print ''

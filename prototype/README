@@ -6,4 +6,12 @@ The purpose of this tool is to spin up hadoop clusters on HP Cloud Services.
 To use:
   - cp config.py.template config.py
   - update config.py with your credentials
-  - run hadoop_cluster.py
+
+Create cluster
+  ./cli --create
+
+List clusters
+  ./cli --list
+
+Destroy cluster
+  ./cli --destroy <CLUSTER_NAME>
