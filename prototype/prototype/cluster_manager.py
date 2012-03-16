@@ -31,6 +31,18 @@ def create_cluster(options):
     cluster = hadoop_cluster.HadoopCluster(nova_client(), options.name, cluster_dir)
     cluster.provision(config.num_data_nodes, config.flavor_name, config.base_image_name, config.hadoop_image_name)
     cluster.to_file()
+    return cluster
+
+def demo(options):
+    cluster = create_cluster(options)
+    cluster.run_map_reduce_job()
+
+def run_job(options):
+    d = state_dir + options.name
+    cluster = hadoop_cluster.HadoopCluster(nova_client(), options.name, d)
+    cluster.from_file()
+    cluster.run_map_reduce_job()
+        
 
 def list_clusters():
     for dname in sorted(os.listdir(state_dir)):

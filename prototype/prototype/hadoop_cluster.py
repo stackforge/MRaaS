@@ -354,33 +354,45 @@ class HadoopCluster:
 </configuration>
         """
 
+    def basename(self, file):
+        return file.split('/')[-1]
+
     def run_map_reduce_job(self):
         self.copy_jar_file()
         self.put_dataset()
-        hdfs_output = "dataout"
-        self.ssh_cmd(hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop jar /home/hadoop/{0} {1} {2}".format(config.map_reduce_jar, config.map_reduce_input, hdfs_output))
+        hdfs_output = "/mr_output"
+        input_basename = config.map_reduce_input.split('/')[-1]
+        logger.info(colored('Starting map reduce job', 'yellow'))
+        logger.info('Job UI: ' + colored('http://' + self.master_ip + ':50030', 'green'))
+        self.ssh_cmd(self.hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop jar {0} {1} {2}".format('/home/hadoop/' + self.basename(config.map_reduce_jar), '/' + input_basename, hdfs_output))
         self.copy_output_from_hdfs(hdfs_output)
         return config.map_reduce_output
 
     def copy_jar_file(self):
-        scp(self.private_key_filename, config.map_reduce_jar, "root@{0}:/home/hadoop/".format(self.host_ip(hosts['master'])))
-        self.ssh_cmd(hosts['master'], "chown hadoop:hadoop /home/hadoop/{0}".format(config.map_reduce_jar))
+        logger.info("Copying MapReduce jar onto master node")
+        jar_basename = config.map_reduce_jar.split('/')[-1]
+        scp(self.private_key_filename, config.map_reduce_jar, "root@{0}:/home/hadoop/".format(self.host_ip(self.hosts['master'])))
+        self.ssh_cmd(self.hosts['master'], "chown hadoop:hadoop /home/hadoop/{0}".format(jar_basename))
 
     def put_dataset(self):
+        time.sleep(15)
+        logger.info('Uploading data set to HDFS')
+        input_base = config.map_reduce_input.split('/')[-1]
         if os.path.isdir(config.map_reduce_input):
-            scp(self.private_key_filename, config.map_reduce_input, "root@{0}:/home/hadoop/".format(self.host_ip(hosts['master'])), recursive=True)
-            self.ssh_cmd(hosts['master'], "chown -R hadoop:hadoop /home/hadoop/{0}".format(config.map_reduce_input))
+            scp(self.private_key_filename, config.map_reduce_input, "root@{0}:/home/hadoop/".format(self.host_ip(self.hosts['master'])), recursive=True)
+            self.ssh_cmd(self.hosts['master'], "chown -R hadoop:hadoop /home/hadoop/{0}".format(input_base))
         else:
-            scp(self.private_key_filename, config.map_reduce_input, "root@{0}:/home/hadoop/".format(self.host_ip(hosts['master'])))
-            self.ssh_cmd(hosts['master'], "chown hadoop:hadoop /home/hadoop/{0}".format(config.map_reduce_input))
-        self.ssh_cmd(hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop fs -put /home/hadoop/{0} {1}".format(config.map_reduce_input, config.map_reduce_input))
+            scp(self.private_key_filename, config.map_reduce_input, "root@{0}:/home/hadoop/".format(self.host_ip(self.hosts['master'])))
+            self.ssh_cmd(self.hosts['master'], "chown hadoop:hadoop /home/hadoop/{0}".format(input_base))
+        self.ssh_cmd(self.hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop fs -put {0} {1}".format('/home/hadoop/' + input_base, '/' + input_base))
 
     def copy_output_from_hdfs(self, hdfs_output):
+        logger.info('Copying data from HDFS to local filesystem: ' + hdfs_output)
         if not os.path.isdir(config.map_reduce_output):
             os.makedirs(config.map_reduce_output)
         #self.ssh_cmd(hosts['master'], "sudo -u hadoop mkdir /home/hadoop/joboutput
-        self.ssh_cmd(hosts['master'], "if [ -d /home/hadoop/joboutput ]; then rm -fr /home/hadoop/joboutput; fi && sudo -u mkdir /home/hadoop/joboutput && sudo -u hadoop /usr/local/hadoop/bin/hadoop fs -copyToLocal {0} /home/hadoop/joboutput".format(hdfs_output)) 
-        scp(self.private_key_filename, "root@{0}:/home/hadoop/joboutput".format(self.host_ip(hosts['master'])), config.map_reduce_output, recursive=True)
+        self.ssh_cmd(self.hosts['master'], "if [ -d /home/hadoop/joboutput ]; then rm -fr /home/hadoop/joboutput; fi && sudo -u hadoop mkdir /home/hadoop/joboutput && sudo -u hadoop /usr/local/hadoop/bin/hadoop fs -copyToLocal {0} /home/hadoop/joboutput".format(hdfs_output)) 
+        scp(self.private_key_filename, "root@{0}:/home/hadoop/joboutput/".format(self.host_ip(self.hosts['master'])), config.map_reduce_output, recursive=True)
  
 
     def print_info(self):

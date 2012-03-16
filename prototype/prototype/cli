@@ -9,6 +9,8 @@ parser.add_option('--create', dest='create', action='store_true', default=False,
 parser.add_option('--destroy', dest='destroy', action='store_true', default=False, help='destroy the cluster')
 parser.add_option('--name', dest='name', metavar='NAME', help='the cluster name')
 parser.add_option('--list', dest='list', action='store_true', default=False, help='list active clusters and exit')
+parser.add_option('--demo', dest='demo', action='store_true', default=False, help='create cluster, run MapReduce job, tear down cluster')
+parser.add_option('--run_job', dest='run_job', action='store_true', default=False, help='run map reduce job specified in config.py')
 
 (options, args) = parser.parse_args()
 
@@ -22,10 +24,13 @@ if options.create and options.destroy:
 if options.list:
     cluster_manager.list_clusters()
 
-if options.create:
+if options.demo:
+    cluster_manager.demo(options)
+elif options.run_job:
+    cluster_manager.run_job(options)
+elif options.create:
     cluster_manager.create_cluster(options)
-
-if options.destroy:
+elif options.destroy:
     if not options.name:
         parser.error('the name of the cluster to be destroyed must be specified with --name')
     cluster_manager.destroy_cluster(options.name)
