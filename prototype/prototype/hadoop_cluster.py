@@ -356,9 +356,9 @@ class HadoopCluster:
 
     def run_map_reduce_job(self):
         self.copy_jar_file()
-        self.put_data()
-        hdfs_output = "mr_output"
-        self.ssh_cmd(hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop jar {0} {1} {3}".format(config.map_reduce_jar, config.map_reduce_input, hdfs_output))
+        self.put_dataset()
+        hdfs_output = "dataout"
+        self.ssh_cmd(hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop jar /home/hadoop/{0} {1} {2}".format(config.map_reduce_jar, config.map_reduce_input, hdfs_output))
         self.copy_output_from_hdfs(hdfs_output)
         return config.map_reduce_output
 
@@ -373,14 +373,14 @@ class HadoopCluster:
         else:
             scp(self.private_key_filename, config.map_reduce_input, "root@{0}:/home/hadoop/".format(self.host_ip(hosts['master'])))
             self.ssh_cmd(hosts['master'], "chown hadoop:hadoop /home/hadoop/{0}".format(config.map_reduce_input))
-        self.ssh_cmd(hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop fs -put {0}".format(config.map_reduce_input))
+        self.ssh_cmd(hosts['master'], "sudo -u hadoop /usr/local/hadoop/bin/hadoop fs -put /home/hadoop/{0} {1}".format(config.map_reduce_input, config.map_reduce_input))
 
     def copy_output_from_hdfs(self, hdfs_output):
         if not os.path.isdir(config.map_reduce_output):
             os.makedirs(config.map_reduce_output)
         #self.ssh_cmd(hosts['master'], "sudo -u hadoop mkdir /home/hadoop/joboutput
         self.ssh_cmd(hosts['master'], "if [ -d /home/hadoop/joboutput ]; then rm -fr /home/hadoop/joboutput; fi && sudo -u mkdir /home/hadoop/joboutput && sudo -u hadoop /usr/local/hadoop/bin/hadoop fs -copyToLocal {0} /home/hadoop/joboutput".format(hdfs_output)) 
-        scp(self.private_key_filename, "root@{0}:/home/hadoop/joboutput/ {1}".format(self.host_ip(hosts['master']), config.map_reduce_output), recursive=True)
+        scp(self.private_key_filename, "root@{0}:/home/hadoop/joboutput".format(self.host_ip(hosts['master'])), config.map_reduce_output, recursive=True)
  
 
     def print_info(self):
