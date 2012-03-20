@@ -14,7 +14,7 @@ def run_cmd(host, keyfile, cmd, expect_status=0):
         if the result of the command is different
         than expect_status, raise an exception.
     """
-    logger.info("Running \"{0}\" on {1}".format(cmd, host))
+    logger.debug("Running \"{0}\" on {1}".format(cmd, host))
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy()) # ignore unknown hosts
     paramiko_lock.acquire()
@@ -36,7 +36,7 @@ def scp(keyfile, src, dest, recursive=False):
     if recursive:
         cmd = cmd + " -r "
     cmd = cmd + src + ' ' + dest
-    logger.info("Running \"{0}\"".format(cmd))
+    logger.debug("Running \"{0}\"".format(cmd))
     o = open('/dev/null', 'w')
     i = open('/dev/null', 'r')
     subprocess.call(cmd, shell=True, stdout=o, stderr=o, stdin=i)

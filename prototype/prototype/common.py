@@ -8,7 +8,7 @@ logging.getLogger().setLevel(logging.WARN)
 
 # application logger. change level for app-level logs.
 logger = logging.getLogger("hadoop")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 for handler in logger.handlers:
     logger.removeHandler(handler)
 
