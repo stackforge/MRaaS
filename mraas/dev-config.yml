@@ -1,0 +1,7 @@
+template: Hello, %s!
+defaultName: Stranger
+
+logging:
+    console:
+        enabled: true
+        threshold: ALL
