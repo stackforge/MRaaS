@@ -1,19 +1,31 @@
 package com.hpcloud.mraas.core;
 
-public class Cluster {
-    private final String id;
-    private final int numNodes;
+import com.yammer.dropwizard.json.JsonSnakeCase;
+import org.codehaus.jackson.annotate.JsonProperty;
+import lombok.Data;
 
-    public Cluster(String id, int numNodes) {
+@JsonSnakeCase
+@Data
+public class Cluster {
+    @JsonProperty
+    private Long id;
+    @JsonProperty
+    private Integer numNodes;
+    @JsonProperty
+    private String authUrl;
+    @JsonProperty
+    private String userName;
+    @JsonProperty
+    private String password;
+    @JsonProperty
+    private String tenant;
+
+
+    public Cluster() {}
+
+    public Cluster(Long id, int numNodes) {
         this.id = id;
         this.numNodes = numNodes;
     }
 
-    public String getId() {
-        return id;
-    }
-
-    public int getNumNodes() {
-        return numNodes;
-    }
 }
