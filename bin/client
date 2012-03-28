@@ -1,0 +1,47 @@
+#!/usr/bin/ruby
+require 'rubygems'
+require 'httparty'
+require 'json'
+require 'optparse'
+
+create_cluster_request = {
+  :access_key => '3867R5F3GDHJUJ17ALGK',
+  :secret_key => 'qhqKG7zd0YJxLsN1s6jUHQzzLY9OkorchSQu+Tr+',
+  :tenant => 'tim.miller.0@gmail.com-default-tenant',
+  :auth_url => 'https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/',
+  :num_nodes => 1
+}
+
+
+class MRClient
+  include HTTParty
+  base_uri 'http://localhost:8080'
+  headers 'Accept' => 'application/json', 'Content-Type' => 'application/json'
+end
+
+options = {}
+OptionParser.new do |opts|
+  opts.on('-h', '--help', 'Display this screen') do
+    puts opts
+    exit
+  end
+  opts.on('-c', '--create',  'Create a cluster') { options[:create] = true }
+  opts.on('-s', '--show',    'Show cluster with --id') { options[:show] = true }
+  opts.on('-d', '--destroy', 'Destroy cluster with --id') { options[:destroy] = true }
+  opts.on('-i', '--id ID', 'Specify cluster id for --show or --destroy') { |id| options[:id] = id }
+end.parse!
+raise "You must specify --id for this action" if ((!options[:id]) and (options[:show] or options[:destroy]))
+
+
+if options[:create] then
+  puts MRClient.post('/clusters', :body => create_cluster_request.to_json)
+end
+
+if options[:show] then
+  puts MRClient.get("/cluster/#{options[:id]}")
+end
+
+if options[:destroy] then
+  puts MRClient.delete("/cluster/#{options[:id]}")
+end
+

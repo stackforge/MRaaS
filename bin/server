@@ -1,0 +1,6 @@
+#!/usr/bin/ruby
+# start the service in your shell.
+dir = File.dirname(__FILE__)
+jar = "#{dir}/../target/mraas-0.0.1-SNAPSHOT.jar"
+config = "#{dir}/../config/dev-config.yml"
+exec "java -jar #{jar} server #{config}"
