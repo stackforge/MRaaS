@@ -7,6 +7,9 @@ database:
     url: jdbc:h2:target/mraas
 
 logging:
+    level: INFO
+    loggers:
+        com.hpcloud.mraas: DEBUG
     console:
         enabled: true
         threshold: ALL

@@ -22,7 +22,6 @@ end
 options = {}
 OptionParser.new do |opts|
   opts.on('-h', '--help', 'Display this screen') do
-    puts opts
     exit
   end
   opts.on('-c', '--create',  'Create a cluster') { options[:create] = true }
@@ -31,17 +30,21 @@ OptionParser.new do |opts|
   opts.on('-i', '--id ID', 'Specify cluster id for --show or --destroy') { |id| options[:id] = id }
 end.parse!
 raise "You must specify --id for this action" if ((!options[:id]) and (options[:show] or options[:destroy]))
+raise "You must specify an action" if (!options[:create] and !options[:show] and !options[:destroy])
 
+def pretty(resp)
+  JSON.pretty_generate(JSON.parse(resp.body))
+end
 
 if options[:create] then
-  puts MRClient.post('/clusters', :body => create_cluster_request.to_json)
+  puts pretty MRClient.post('/clusters', :body => create_cluster_request.to_json)
 end
 
 if options[:show] then
-  puts MRClient.get("/cluster/#{options[:id]}")
+  puts pretty MRClient.get("/cluster/#{options[:id]}")
 end
 
 if options[:destroy] then
-  puts MRClient.delete("/cluster/#{options[:id]}")
+  puts pretty MRClient.delete("/cluster/#{options[:id]}")
 end
 

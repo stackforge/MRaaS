@@ -1,15 +1,16 @@
 # Overview
 
-  MapReduce as a Service
+  MapReduce as a Service:
+  * Spin up a Hadoop cluster on HPCloud
+  * Submit MapReduce jobs to a cluster
+  * Store job results in Swift
+  * Tear down clusters
 
 
 # Prerequisites
 
-* Install openstack-sdk (this needs to be put up on a mvn server somewhere)
-
-    git clone git@github.com:echohead/openstack-java-sdk.git 
-    cd openstack-java-sdk 
-    mvn install -Dmaven.test.skip=true
+* for the command line clients:
+   $ sudo gem install json && sudo gem install httparty
 
 # Running The Application
 
@@ -30,3 +31,24 @@ Run MRaaS with the following commands:
 * A rest client which exercises the service:
 
         ./bin/client --help
+
+# Setting up eclipse
+
+  * mvn eclipse:eclipse
+
+
+# Submitting Code
+
+All merges to master go through Gerritt (https://review.stackforge.org/):
+
+    git review -v
+
+
+# Gotchas
+
+  Public IPs are re-used, which can cause ssh to complain.
+  To prevent this, add the following to ~/.ssh/config:
+
+  Host 15.185.*.*
+    UserKnownHostsFile /dev/null
+    StrictHostKeyChecking no

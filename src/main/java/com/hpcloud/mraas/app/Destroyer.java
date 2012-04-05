@@ -18,7 +18,7 @@ public class Destroyer extends Thread {
         }
 
         public void run() {
-            for (String id : cluster.getNodeIds().values()) client.destroyHost(id);
+            // TODO
         }
 
     }
