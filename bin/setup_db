@@ -1,6 +1,0 @@
-#!/usr/bin/ruby
-# apply the schema to the h2 db specified by dev-config.yml
-dir = File.dirname(__FILE__)
-jar = "#{dir}/../target/hpcloud-mraas-0.0.1-SNAPSHOT.jar"
-config = "#{dir}/../config/dev-config.yml"
-exec "java -jar #{jar} setup #{config}"
