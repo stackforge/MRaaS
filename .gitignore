@@ -1,7 +1,10 @@
 *.swp
 *.pyc
 *.class
+
 target/*
+hadoop-swiftn-driver/target/*
+
 .classpath
 .settings
 .project
