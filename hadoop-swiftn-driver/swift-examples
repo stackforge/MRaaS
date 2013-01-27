@@ -7,16 +7,10 @@ bin/hadoop fs -cat swiftn://output/wordout/*
 
 bin/hadoop fs -lsr swiftn://input
 
-# remove of jjtemp exists
-#rm -rf /home/jojoseph/DEV/Hadoop/release-1.0.3/jjtemp
-
 #input from swift and output to local file system
-bin/hadoop jar build/hadoop-examples-*.jar wordcount swiftn://input file:///home/jojoseph/DEV/Hadoop/release-1.0.3/jjtemp
+bin/hadoop jar build/hadoop-examples-*.jar wordcount swiftn://input file:///home/output
  
 bin/hadoop fs -rmr /cloudout
 
 #input from swift and output to hdfs
 bin/hadoop jar build/hadoop-examples-*.jar wordcount swiftn://input hdfs://localhost:9000/cloudout
-
-
-
